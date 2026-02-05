@@ -152,6 +152,10 @@ int main(){
         }
     }
     printf("\n");
+    printf("Identifiers:\n");
+    for(int i=0;arr_i[i]!=NULL;i++){
+        printf("%s\n",arr_i[i]);
+    }
     printf("\n");
     printf("Unique Identifiers\n");
     int i=0;
