@@ -3,13 +3,12 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-// Define types of TAC statements
 typedef enum {
-    OP_BIN,    // a = b + c
-    OP_UN,     // a = b
-    OP_IF,     // if x < y goto L
-    OP_GOTO,   // goto L
-    OP_LABEL,  // L:
+    OP_BIN,
+    OP_UN,
+    OP_IF,
+    OP_GOTO,
+    OP_LABEL,
     OP_OTHER
 } stmt_type;
 
@@ -19,16 +18,27 @@ typedef struct {
     stmt_type type;
     int used;
 } tac;
-
+/*
+a = 10
+b = 20
+t1 = a + b
+t2 = a + b
+t3 = t2 * 1
+if a < b goto L1
+goto L2
+L1:
+x = t3
+L2:
+END
+*/
 tac t[100];
 int n = 0;
 
-// Handles numbers and negative numbers (e.g., -5)
 int isnumber(char* s) {
     if (!s || strlen(s) == 0) return 0;
     int start = 0;
     if (s[0] == '-') {
-        if (strlen(s) == 1) return 0; // Just a minus sign is not a number
+        if (strlen(s) == 1) return 0;
         start = 1;
     }
     for (int i = start; s[i]; i++) {
@@ -53,22 +63,18 @@ void parse(char* line) {
     strcpy(t[n].res, "");
     strcpy(t[n].relop, "");
 
-    // 1. Label (e.g., L1:)
     if (line[strlen(line) - 1] == ':') {
         sscanf(line, "%[^:]", t[n].res);
         t[n].type = OP_LABEL;
     }
-    // 2. Conditional Jump (e.g., if x < y goto L1)
     else if (strncmp(line, "if", 2) == 0) {
         sscanf(line, "if %s %s %s goto %s", t[n].op1, t[n].relop, t[n].op2, t[n].res);
         t[n].type = OP_IF;
     }
-    // 3. Unconditional Jump (e.g., goto L1)
     else if (strncmp(line, "goto", 4) == 0) {
         sscanf(line, "goto %s", t[n].res);
         t[n].type = OP_GOTO;
     }
-    // 4. Assignments
     else {
         int count = sscanf(line, "%s = %s %c %s", t[n].res, t[n].op1, &t[n].op, t[n].op2);
         if (count == 4) {
@@ -86,22 +92,22 @@ void print_tac() {
     for (int i = 0; i < n; i++) {
         if (t[i].used) {
             switch (t[i].type) {
-                case OP_LABEL: 
-                    printf("%s:\n", t[i].res); 
+                case OP_LABEL:
+                    printf("%s:\n", t[i].res);
                     break;
-                case OP_GOTO: 
-                    printf("goto %s\n", t[i].res); 
+                case OP_GOTO:
+                    printf("goto %s\n", t[i].res);
                     break;
-                case OP_IF: 
-                    printf("if %s %s %s goto %s\n", t[i].op1, t[i].relop, t[i].op2, t[i].res); 
+                case OP_IF:
+                    printf("if %s %s %s goto %s\n", t[i].op1, t[i].relop, t[i].op2, t[i].res);
                     break;
-                case OP_BIN: 
-                    printf("%s = %s %c %s\n", t[i].res, t[i].op1, t[i].op, t[i].op2); 
+                case OP_BIN:
+                    printf("%s = %s %c %s\n", t[i].res, t[i].op1, t[i].op, t[i].op2);
                     break;
-                case OP_UN: 
-                    printf("%s = %s\n", t[i].res, t[i].op1); 
+                case OP_UN:
+                    printf("%s = %s\n", t[i].res, t[i].op1);
                     break;
-                default: 
+                default:
                     break;
             }
         }
@@ -128,11 +134,9 @@ int constant_propagation() {
     for (int i = 0; i < n; i++) {
         if (t[i].type == OP_UN && isnumber(t[i].op1)) {
             for (int j = i + 1; j < n; j++) {
-                // Stop propagating if we hit control flow boundaries (Basic Block end)
                 if (t[j].type == OP_LABEL || t[j].type == OP_GOTO || t[j].type == OP_IF) break;
-                
-                if (strcmp(t[i].res, t[j].res) == 0) break; // Variable redefined
-                
+                if (strcmp(t[i].res, t[j].res) == 0) break;
+
                 if (strcmp(t[i].res, t[j].op1) == 0) strcpy(t[j].op1, t[i].op1);
                 if (strcmp(t[i].res, t[j].op2) == 0) strcpy(t[j].op2, t[i].op1);
             }
@@ -147,11 +151,9 @@ int copy_propagation() {
     for (int i = 0; i < n; i++) {
         if (t[i].type == OP_UN && !isnumber(t[i].op1)) {
             for (int j = i + 1; j < n; j++) {
-                // Stop on control flow boundary
                 if (t[j].type == OP_LABEL || t[j].type == OP_GOTO || t[j].type == OP_IF) break;
-                
-                if (strcmp(t[i].res, t[j].res) == 0) break; // Variable redefined
-                
+                if (strcmp(t[i].res, t[j].res) == 0) break;
+
                 if (strcmp(t[i].res, t[j].op1) == 0) strcpy(t[j].op1, t[i].op1);
                 if (strcmp(t[i].res, t[j].op2) == 0) strcpy(t[j].op2, t[i].op1);
             }
@@ -165,19 +167,17 @@ int cse() {
     printf("Common Subexpression Elimination (CSE):\n");
     for (int i = 0; i < n; i++) {
         if (t[i].type != OP_BIN) continue;
-        
+
         for (int j = i + 1; j < n; j++) {
-            // Stop on control flow boundary
             if (t[j].type == OP_LABEL || t[j].type == OP_GOTO || t[j].type == OP_IF) break;
-            
-            // If operands change, we can't substitute anymore
+
             if (strcmp(t[i].res, t[j].op1) == 0 || strcmp(t[i].res, t[j].op2) == 0) break;
             if (strcmp(t[i].op1, t[j].res) == 0 || strcmp(t[i].op2, t[j].res) == 0) break;
 
             if (t[j].type == OP_BIN && t[i].op == t[j].op) {
                 int match_direct = (strcmp(t[i].op1, t[j].op1) == 0 && strcmp(t[i].op2, t[j].op2) == 0);
                 int match_commute = (strcmp(t[i].op1, t[j].op2) == 0 && strcmp(t[i].op2, t[j].op1) == 0);
-                
+
                 if (match_direct || (match_commute && (t[i].op == '+' || t[i].op == '*'))) {
                     strcpy(t[j].op1, t[i].res);
                     t[j].type = OP_UN;
@@ -202,7 +202,7 @@ int algebraic_simplification() {
                 } else if (strcmp(t[i].op2, "0") == 0) {
                     t[i].type = OP_UN;
                 }
-            } 
+            }
             else if (t[i].op == '*') {
                 if (strcmp(t[i].op1, "1") == 0) {
                     strcpy(t[i].op1, t[i].op2);
@@ -224,57 +224,27 @@ int algebraic_simplification() {
     return 0;
 }
 
-void dead_code_elimination() {
-    printf("Dead Code Elimination:\n");
-    for (int i = 0; i < n; i++) {
-        // Never eliminate control flow statements
-        if (t[i].type == OP_LABEL || t[i].type == OP_GOTO || t[i].type == OP_IF) {
-            t[i].used = 1;
-            continue;
-        }
-        
-        t[i].used = 0;
-        
-        // Protect non-temporary output variables (Assume anything not starting with 't' is a real variable like 'res' or 'x')
-        if (t[i].res[0] != 't') {
-            t[i].used = 1;
-        }
-        
-        for (int j = i + 1; j < n; j++) {
-            if (strcmp(t[i].res, t[j].op1) == 0 || strcmp(t[i].res, t[j].op2) == 0) {
-                t[i].used = 1;
-                break;
-            }
-        }
-    }
-    print_tac();
-}
-
 int main() {
     char line[100];
     printf("Enter TAC (type 'END' to stop):\n");
+
     while (1) {
         fgets(line, sizeof(line), stdin);
-        line[strcspn(line, "\n")] = 0; // Strip newline
-        
+        line[strcspn(line, "\n")] = 0;
+
         if (strcmp(line, "END") == 0) break;
         if (strlen(line) > 0) parse(line);
     }
-    
+
     printf("\nOriginal TAC:\n");
     print_tac();
-    
-    // Pass 1: Fold explicit constants and propagate them
+
     constant_folding();
     constant_propagation();
-    
-    // Pass 2: Catch new folding opportunities exposed by propagation (e.g., 10 + 20)
-    constant_folding(); 
-    
+    constant_folding();
     cse();
     copy_propagation();
     algebraic_simplification();
-    dead_code_elimination();
-    
+
     return 0;
 }

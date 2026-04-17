@@ -3,29 +3,31 @@
 #include <string.h>
 #include <stdlib.h>
 
-char input[1000];
+char input[2000];
 int pos = 0;
 int t_count = 0;
 int l_count = 0;
 
-// Function Prototypes
-void e(char *place);
-void condition(char *falseLabel);
 void statement();
-void assignment();
+void expression(char *place);
+void condition(char *falseLabel);
 
-// TAC Temp Variable Generator
 void nextemp(char *result) {
     sprintf(result, "t%d", t_count++);
 }
 
-// TAC Label Generator
 void newlabel(char *label) {
     sprintf(label, "L%d", l_count++);
 }
 
 void skip_spaces() {
     while (isspace(input[pos])) pos++;
+}
+
+int startswith(const char *kw) {
+    skip_spaces();
+    int len = strlen(kw);
+    return strncmp(&input[pos], kw, len) == 0 && !isalnum(input[pos + len]);
 }
 
 void match(char expected) {
@@ -38,31 +40,36 @@ void match(char expected) {
     }
 }
 
-// --- EXPRESSION PARSING (e, t, f) ---
-void f(char *place) {
+void factor(char *place) {
     skip_spaces();
+
     if (input[pos] == '(') {
         pos++;
-        e(place);
+        expression(place);
         match(')');
-    } else if (isalnum(input[pos])) {
+    }
+    else if (isalnum(input[pos])) {
         int i = 0;
-        while (isalnum(input[pos])) place[i++] = input[pos++];
+        while (isalnum(input[pos])) {
+            place[i++] = input[pos++];
+        }
         place[i] = '\0';
-    } else {
-        printf("Syntax Error at position %d: %c\n", pos, input[pos]);
+    }
+    else {
+        printf("Syntax Error at position %d near '%c'\n", pos, input[pos]);
         exit(1);
     }
 }
 
-void t(char *place) {
-    char f1[10], f2[10], tmp[10];
-    f(f1);
+void term(char *place) {
+    char f1[50], f2[50], tmp[50];
+    factor(f1);
     strcpy(place, f1);
+
     skip_spaces();
     while (input[pos] == '*' || input[pos] == '/') {
         char op = input[pos++];
-        f(f2);
+        factor(f2);
         nextemp(tmp);
         printf("%s = %s %c %s\n", tmp, place, op, f2);
         strcpy(place, tmp);
@@ -70,14 +77,15 @@ void t(char *place) {
     }
 }
 
-void e(char *place) {
-    char t1[10], t2[10], tmp[10];
-    t(t1);
+void expression(char *place) {
+    char t1[50], t2[50], tmp[50];
+    term(t1);
     strcpy(place, t1);
+
     skip_spaces();
     while (input[pos] == '+' || input[pos] == '-') {
         char op = input[pos++];
-        t(t2);
+        term(t2);
         nextemp(tmp);
         printf("%s = %s %c %s\n", tmp, place, op, t2);
         strcpy(place, tmp);
@@ -85,194 +93,269 @@ void e(char *place) {
     }
 }
 
-// --- CONDITION PARSING ---
-void condition(char *falseLabel) {
-    char op1[10], op2[10], relop[5];
-    e(op1);
+void parse_identifier(char *var) {
     skip_spaces();
-    
-    // Parse relational operators (e.g., <, >, <=, >=, ==, !=)
     int i = 0;
-    while (input[pos] == '<' || input[pos] == '>' || input[pos] == '=' || input[pos] == '!') {
-        relop[i++] = input[pos++];
+    if (!isalpha(input[pos])) {
+        printf("Syntax Error: Identifier expected at position %d\n", pos);
+        exit(1);
     }
-    relop[i] = '\0';
-    
-    e(op2);
-    char skipLabel[10];
-    newlabel(skipLabel);
-    
-    // If condition is true, skip the goto false statement
-    printf("if %s %s %s goto %s\n", op1, relop, op2, skipLabel);
-    printf("goto %s\n", falseLabel);
-    printf("%s:\n", skipLabel);
+    while (isalnum(input[pos])) {
+        var[i++] = input[pos++];
+    }
+    var[i] = '\0';
 }
 
-// --- ASSIGNMENT PARSING ---
-void assignment() {
+void assignment_or_increment() {
+    char var[50], res[50], tmp[50];
+    parse_identifier(var);
     skip_spaces();
-    char var[20], res[10];
-    int i = 0;
-    while (isalnum(input[pos])) var[i++] = input[pos++];
-    var[i] = '\0';
-    skip_spaces();
-    if (input[pos] == '=') {
+
+    if (input[pos] == '=' ) {
         pos++;
-        e(res);
+        expression(res);
         printf("%s = %s\n", var, res);
     }
+    else if (input[pos] == '+' && input[pos + 1] == '+') {
+        pos += 2;
+        nextemp(tmp);
+        printf("%s = %s + 1\n", tmp, var);
+        printf("%s = %s\n", var, tmp);
+    }
+    else if (input[pos] == '-' && input[pos + 1] == '-') {
+        pos += 2;
+        nextemp(tmp);
+        printf("%s = %s - 1\n", tmp, var);
+        printf("%s = %s\n", var, tmp);
+    }
+    else {
+        printf("Syntax Error: Invalid assignment/update at position %d\n", pos);
+        exit(1);
+    }
 }
 
-// --- STATEMENT & CONTROL FLOW PARSING ---
+void condition(char *falseLabel) {
+    char op1[50], op2[50], relop[10], trueLabel[20];
+    int i = 0;
+
+    expression(op1);
+    skip_spaces();
+
+    if (input[pos] == '<' || input[pos] == '>' || input[pos] == '=' || input[pos] == '!') {
+        while (input[pos] == '<' || input[pos] == '>' || input[pos] == '=' || input[pos] == '!') {
+            relop[i++] = input[pos++];
+        }
+        relop[i] = '\0';
+    } else {
+        printf("Syntax Error: Relational operator expected at position %d\n", pos);
+        exit(1);
+    }
+
+    expression(op2);
+    newlabel(trueLabel);
+
+    printf("if %s %s %s goto %s\n", op1, relop, op2, trueLabel);
+    printf("goto %s\n", falseLabel);
+    printf("%s:\n", trueLabel);
+}
+
+void block() {
+    match('{');
+    skip_spaces();
+    while (input[pos] != '}' && input[pos] != '\0') {
+        statement();
+        skip_spaces();
+    }
+    match('}');
+}
+
+void parse_if() {
+    pos += 2;
+    match('(');
+
+    char l_false[20], l_end[20];
+    newlabel(l_false);
+    newlabel(l_end);
+
+    condition(l_false);
+    match(')');
+
+    statement();
+
+    skip_spaces();
+    if (startswith("else")) {
+        printf("goto %s\n", l_end);
+        printf("%s:\n", l_false);
+        pos += 4;
+        statement();
+        printf("%s:\n", l_end);
+    } else {
+        printf("%s:\n", l_false);
+    }
+}
+
+void parse_while() {
+    char l_start[20], l_end[20];
+    newlabel(l_start);
+    newlabel(l_end);
+
+    pos += 5;
+    printf("%s:\n", l_start);
+    match('(');
+    condition(l_end);
+    match(')');
+
+    statement();
+    printf("goto %s\n", l_start);
+    printf("%s:\n", l_end);
+}
+
+void parse_for() {
+    char l_start[20], l_end[20];
+    int cond_start, update_start, update_end, body_end;
+
+    pos += 3;
+    match('(');
+
+    assignment_or_increment();
+    match(';');
+
+    newlabel(l_start);
+    newlabel(l_end);
+
+    printf("%s:\n", l_start);
+
+    cond_start = pos;
+    condition(l_end);
+    match(';');
+
+    update_start = pos;
+    while (input[pos] != ')' && input[pos] != '\0') pos++;
+    update_end = pos;
+
+    match(')');
+
+    statement();
+    body_end = pos;
+
+    pos = update_start;
+    assignment_or_increment();
+
+    pos = body_end;
+    printf("goto %s\n", l_start);
+    printf("%s:\n", l_end);
+}
+
+void parse_switch() {
+    char switch_var[50], l_end[20], l_next[20], val[50];
+    pos += 6;
+    match('(');
+    expression(switch_var);
+    match(')');
+    match('{');
+
+    newlabel(l_end);
+
+    while (1) {
+        skip_spaces();
+        if (input[pos] == '}') break;
+
+        if (startswith("case")) {
+            pos += 4;
+            skip_spaces();
+
+            int i = 0;
+            while (isalnum(input[pos])) {
+                val[i++] = input[pos++];
+            }
+            val[i] = '\0';
+
+            match(':');
+            newlabel(l_next);
+
+            printf("if %s != %s goto %s\n", switch_var, val, l_next);
+
+            while (1) {
+                skip_spaces();
+                if (startswith("break")) {
+                    pos += 5;
+                    match(';');
+                    printf("goto %s\n", l_end);
+                    break;
+                }
+                if (startswith("case") || startswith("default") || input[pos] == '}') {
+                    break;
+                }
+                statement();
+            }
+
+            printf("%s:\n", l_next);
+        }
+        else if (startswith("default")) {
+            pos += 7;
+            match(':');
+            while (1) {
+                skip_spaces();
+                if (input[pos] == '}') break;
+                statement();
+            }
+        }
+        else {
+            printf("Syntax Error in switch at position %d\n", pos);
+            exit(1);
+        }
+    }
+
+    match('}');
+    printf("%s:\n", l_end);
+}
+
 void statement() {
     skip_spaces();
-    
-    // Block of statements { ... }
+
     if (input[pos] == '{') {
-        pos++;
-        skip_spaces();
-        while (input[pos] != '}' && input[pos] != '\0') {
-            statement();
-            skip_spaces();
-        }
-        match('}');
-    } 
-    // IF BLOCK
-    else if (strncmp(&input[pos], "if", 2) == 0 && !isalnum(input[pos+2])) {
-        pos += 2; match('(');
-        char l_false[10]; newlabel(l_false);
-        
-        condition(l_false); 
-        match(')');
-        statement();
-        
-        printf("%s:\n", l_false);
-    } 
-    // WHILE BLOCK
-    else if (strncmp(&input[pos], "while", 5) == 0 && !isalnum(input[pos+5])) {
-        pos += 5; match('(');
-        char l_start[10], l_end[10];
-        newlabel(l_start); newlabel(l_end);
-        
-        printf("%s:\n", l_start);
-        condition(l_end); 
-        match(')');
-        
-        statement();
-        
-        printf("goto %s\n", l_start);
-        printf("%s:\n", l_end);
-    } 
-    // FOR BLOCK
-    else if (strncmp(&input[pos], "for", 3) == 0 && !isalnum(input[pos+3])) {
-        pos += 3; match('(');
-        
-        // 1. Init
-        assignment(); match(';');
-        
-        char l_start[10], l_end[10];
-        newlabel(l_start); newlabel(l_end);
-        
-        // 2. Condition
-        printf("%s:\n", l_start);
-        condition(l_end); match(';');
-        
-        // 3. Skip over the update statement for now
-        int update_pos = pos;
-        int paren_count = 1;
-        while (input[pos] != '\0') {
-            if (input[pos] == '(') paren_count++;
-            if (input[pos] == ')') {
-                paren_count--;
-                if (paren_count == 0) break;
-            }
-            pos++;
-        }
-        match(')');
-        
-        // 4. Parse the Body (condition() true branch naturally falls through here)
-        statement();
-        
-        // 5. Go back and parse the update statement so it prints right after the body
-        int body_end_pos = pos;
-        pos = update_pos;
-        assignment();
-        
-        // 6. Jump back to condition
-        printf("goto %s\n", l_start);
-        
-        // 7. Restore position and print end label
-        pos = body_end_pos; 
-        printf("%s:\n", l_end);
-    } 
-    // SWITCH CASE BLOCK
-    else if (strncmp(&input[pos], "switch", 6) == 0 && !isalnum(input[pos+6])) {
-        pos += 6; match('(');
-        char switch_var[10];
-        e(switch_var); 
-        match(')'); match('{');
-        
-        char l_end[10]; newlabel(l_end);
-        
-        while (input[pos] != '}' && input[pos] != '\0') {
-            skip_spaces();
-            if (strncmp(&input[pos], "case", 4) == 0) {
-                pos += 4; skip_spaces();
-                
-                // Parse case value
-                char val[20]; int i = 0;
-                while (isalnum(input[pos])) val[i++] = input[pos++];
-                val[i] = '\0';
-                match(':');
-                
-                char l_next[10]; newlabel(l_next);
-                printf("if %s != %s goto %s\n", switch_var, val, l_next);
-                
-                statement();
-                
-                // Handle optional break
-                skip_spaces();
-                if (strncmp(&input[pos], "break", 5) == 0) {
-                    pos += 5; match(';');
-                    printf("goto %s\n", l_end);
-                }
-                
-                printf("%s:\n", l_next);
-            } 
-            else if (strncmp(&input[pos], "default", 7) == 0) {
-                pos += 7; match(':');
-                statement();
-            } 
-        }
-        match('}');
-        printf("%s:\n", l_end);
-    } 
-    // BASIC ASSIGNMENT
+        block();
+    }
+    else if (startswith("if")) {
+        parse_if();
+    }
+    else if (startswith("while")) {
+        parse_while();
+    }
+    else if (startswith("for")) {
+        parse_for();
+    }
+    else if (startswith("switch")) {
+        parse_switch();
+    }
     else if (isalpha(input[pos])) {
-        assignment();
+        assignment_or_increment();
         skip_spaces();
-        if (input[pos] == ';') pos++; // Consume trailing semicolon if present
+        if (input[pos] == ';') pos++;
+    }
+    else {
+        printf("Syntax Error: Invalid statement at position %d near '%c'\n", pos, input[pos]);
+        exit(1);
     }
 }
 
 int main() {
-    printf("Enter code block:\n");
-    
-    // Read multiline inputs
     char line[200];
+
+    printf("Enter code block:\n");
     input[0] = '\0';
+
     while (fgets(line, sizeof(line), stdin)) {
-        if (line[0] == '\n') break; // Press Enter twice to finish input
+        if (line[0] == '\n') break;
         strcat(input, line);
     }
 
     printf("\n--- Generated Three Address Code (TAC) ---\n");
-    statement();
-    
-    skip_spaces();
-    if (input[pos] != '\0') {
-        printf("\nWarning: Extra characters ignored at the end: %s\n", &input[pos]);
+    while (1) {
+        skip_spaces();
+        if (input[pos] == '\0') break;
+        statement();
     }
-    
+
     return 0;
 }
